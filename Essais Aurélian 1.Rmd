@@ -1,0 +1,49 @@
+---
+title: "Project Econometrics - essais Aurélian 1"
+author: "Aurélian"
+date: "2026-04-08"
+output: html_document
+---
+
+We install the general packages we need for the data manipulations
+```{r}
+library(haven) # to open a .dta file
+library(tidyverse)
+```
+
+We import the data
+```{r}
+df <- read_dta("DM_Subject_2_Data.dta")
+```
+
+We recreate, correctly, the "salhoraire" variable
+```{r}
+data$salhoraire = data$salmensuel / (data$heuretra * 4.33)
+```
+
+Question 1
+
+In the general case, the wage is registered for the first and the last quarters (T=1,2),
+among six quarters (t=1,2,3,4,5,6).
+Ici, we restrict us to the last quarter (ie, t=6).
+
+We use filter to apply this restriction to our dataframe.
+```{r}
+df_q1 <- df %>% 
+  filter(t==6)
+```
+
+1a) Estimation of the effect of some variables on wages
+
+```{r}
+summary(df_q1)
+
+df_q1 <- df_q1 %>% 
+  mutate(nat = as.numeric(nat),
+         origine = as.numeric(origine),
+         csp_actif = as.numeric(csp_actif))
+
+reg1 <- lm(salhoraire ~ nat + origine + age + homme + csp_actif, df_q1)
+summary(reg1)
+
+```
