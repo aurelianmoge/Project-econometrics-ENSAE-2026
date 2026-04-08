@@ -46,4 +46,5 @@ df_q1 <- df_q1 %>%
 reg1 <- lm(salhoraire ~ nat + origine + age + homme + csp_actif, df_q1)
 summary(reg1)
 
+
 ```
