@@ -18,7 +18,7 @@ df <- read_dta("DM_Subject_2_Data.dta")
 
 We recreate, correctly, the "salhoraire" variable
 ```{r}
-data$salhoraire = data$salmensuel / (data$heuretra * 4.33)
+df$salhoraire = df$salmensuel / (df$heuretra * 4.33)
 ```
 
 Question 1
@@ -43,8 +43,28 @@ df_q1 <- df_q1 %>%
          origine = as.numeric(origine),
          csp_actif = as.numeric(csp_actif))
 
-reg1 <- lm(salhoraire ~ nat + origine + age + homme + csp_actif, df_q1)
+reg1 <- lm(salhoraire ~ nat + origine + age + homme + contrat + csp_actif, df_q1)
 summary(reg1)
 
 
 ```
+```{r}
+df_q1 <- df_q1 %>% 
+  mutate(contrat_bis = case_when(
+    contrat == "1" ~ "Permanent",
+    contrat == "2" | contrat == "3" | contrat == "4" | contrat == "5" ~ "Temporaire",
+    TRUE ~ "Aucun"
+  ))
+```
+
+On essaie d'ajouter cette variable de contrat "plus simple" dans la régression :
+```{r}
+reg2 <- lm(salhoraire ~ nat + origine + age + homme + contrat_bis + csp_actif, df_q1)
+summary(reg2)
+```
+
+
+
+
+
+
