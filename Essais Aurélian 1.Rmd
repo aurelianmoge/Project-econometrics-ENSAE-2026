@@ -254,6 +254,8 @@ We include both csp_pere and csp_mere to control for social background, ensuring
 
 We include sante_declaree as it is fully reported at t=6 and serves as a proxy for individual productivity, which directly impacts hourly wages.
 
+We acknowledge potential endogeneity issues due to reverse causality in variables such as sante_declaree. For instance, while health may impact productivity, higher earnings also provide better access to healthcare so sante_declare could be correlated with the error term.
+
 
 "heuretra"	nombre d heures travaillees en moyenne par semaine dans l emploi principal, decl
 "heuretra_calculees"	nombre d heures travaillees en moyenne par semaine, calcul nb jour x 7
@@ -446,3 +448,38 @@ modelsummary(models,
 
 FINALEMENT EXPLIQUER LES RAISONS (R**2) et éco qui font qu'on choisit parmi log-niveau puis choisir parmi aic R**2 significativité des coefs....
 
+
+Du point de vue R**2 et des AIC/BIC M3 Log est le mieux -- petit problème les coefficients associés aux origines ne sont significatifs statistiquement DANS AUCUN MODELE ---POSSIBLE DE CREER UNE VARIABLE BINAIRE ORIGINE IMIGRE OU C'EST PAS CE QUI VEULENT ?
+
+
+
+
+
+
+## Question 2
+#### 2a)
+
+We can argue that education is partly explained by individual and family choices that themselves depend on origin (e.g.cultural context,etc.). In other words, origin impacts wages largely indirectly through its impact on education. By adding education to the model, the estimated coefficient for origin only captures the direct effect on wages, ignoring the indirect effect through educational pathways that may be created by unobservable factors. Consequently, we can expect the coefficient for origin to become smaller in absolute value than the total effect, as it no longer accounts for the potential disadvantages accumulated during the individual's educational trajectory.
+
+(An other phenomenon, althought that's not really our interest in this question, is that the coefficient for education may be biased due to omitted unobservable factors (such as innate talent or motivation) that simultaneously influence both educational level and wages.)
+
+#### 2b)
+To avoid the main problem mentioned in (2a), we can add an instrument for education level: 
+For an additionnal variable Z to be an instrument we need:
+- Pertienence : Cov(educ, Z) different from 0 and even as strongly correlated as possible;
+- Exogeneity: Cov(salhoraire, Z)=0, Z should not be correlated to salhoraire (just indirectly via educ);
+
+By intuition, csp_mere or csp_pere seem to bee good choices:
+The socioprofessional category of the parents influenced a lot the choices and willingness to pursue long or short studies by reproduction of choices of parents or by the vision on job possibilities you have for instance.
+The socioprofessional category might influence a bit the wage but really indirectly since even if it influenced the educational choices or even the cultural capital of the children their current job and wage is for from being only influenced by these two things.
+
+To address the main problem mentioned in (2a), we can use an Instrumental Variable. 
+
+For a variable Z to be a valid instrument, it must satisfy two conditions:
+
+1) Relevance: $Cov(\text{educ}, Z) \neq 0$. The instrument must be strongly correlated with education.
+2) Exogeneity: $Cov(\text{wage}, Z) = 0$. Z should not be correlated with the error term; it should only impact wages indirectly through education.By intuition, csp_mere or csp_pere seem to be good choices:
+Relevance: Parental socio-professional category influences a lot the willingness and capacity to pursue long studies, often through social reproduction or different visions of job possibilities.
+Exogeneity: Parental CSP impacts wages primarily indirectly. Even if it shapes educational choices and cultural capital, an individual's current hourly wage is mostly determined by their own qualifications and career path, making any remaining direct influence from parents' status possibly negligible.
+
+OTHER IDEAS ??
