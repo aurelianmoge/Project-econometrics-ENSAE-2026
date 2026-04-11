@@ -30,7 +30,7 @@ We recreate, correctly, the "salhoraire" variable
 data$salhoraire = data$salmensuel / (data$heuretra * 4.33)
 ```
 
-Question 1
+## Question 1
 
 In the general case, the wage is registered for the first and the last quarters (T=1,2),
 among six quarters (t=1,2,3,4,5,6).
@@ -42,7 +42,7 @@ df_q1 <- df %>%
   filter(t==6)
 ```
 
-1a) Estimation of the effect of some variables on wages
+### 1a) Estimation of the effect of some variables on wages
 
 ```{r}
 summary(df_q1)
@@ -51,19 +51,26 @@ df_q1 <- df_q1 %>%
   mutate(nat = as.numeric(nat),
 ```
 
+**A First Regression**
 
-```{r}
-```
-
+To begin, we can try a first regression of salhoraire/logsalhoraire on variables that are commonly used in the literature to explain wages, that is to say: experience, age, gender, education and socio-professional category. We also include origin as it is the independent variable we are interested in.
 
 ```{r}
 origine = as.numeric(origine),
-         csp_actif = as.numeric(csp_actif))
+csp_actif = as.numeric(csp_actif))
 
-reg1 <- lm(salhoraire ~ nat + origine + age + homme + csp_actif, df_q1)
-summary(reg1)
+reg0_level <- lm(salhoraire ~ origine + age + homme + csp_actif+education, df_q1)
+
+reg0_log <- lm(logsalhoraire ~ origine + age + homme + csp_actif+education, df_q1)
+summary(reg0_level)
+summary(reg0_log)
 
 ```
+We obtain two models where most of the coefficients are statistically significant at the 5% threshold, and where the adjusted R-squared values are respectively 0.2625 and 0.3299 for the level and log-level models. We won't interpret them further for now, but we will give more details about why we include one variable or another, and we will then propose a few models and compare them.
+
+**Some justification for the choice of variables**
+
+***The independent variables of interest to be added to our model will be written in bold and italic.***
 
 Minimal theoretical models:
 log(salhoraire)= Beta_0 +Beta_origin*origin + u
@@ -101,10 +108,10 @@ data.frame(Label = get_label(df))
 
 These three variables deal with the urban categories in terms of density or number of housings. They might be correlated to both origin (cities are usually more metropolitan than countryside) and salhoraire (the cost and living and thus the wages are usually different whether you live in suburbs, city center or rural areas). Adding, at least, one of them could help to isolate the effect of origin on hourly wages. But, as before it might not be interesting adding them all in the model because they are redundant so it would not be clearly interpretable and it would add a lot of multicolinearity (if we suppose they are really correlated with origine) and thus increase the variance of beta_origine as well as those of Beta_tuu/tuu_r/typeuu without adding much information( well, the other thing we are interested in is to have a precise estimator (Beta_origine) that is to say with correct and small standard error ).
 
-So we will try with "typuu" and/or "tuu_r" that are more easy to interpret.
+So we will try with ***"typuu" and/or "tuu_r"*** that are more easy to interpret.
 
 
-"zus" indicatrice d'appartenance à une zone urbaine sensible, can also be interesting to add for the same reasons as the previous variables (probably correlated with both origine (due to spatial segregation) and salhoraire(due to neighborhood effects, restricted job networks, or address-based discrimination)). Thus, omitting it would certainly create an omitted variable bias.
+***"zus"*** indicatrice d'appartenance à une zone urbaine sensible, can also be interesting to add for the same reasons as the previous variables (probably correlated with both origine (due to spatial segregation) and salhoraire(due to neighborhood effects, restricted job networks, or address-based discrimination)). Thus, omitting it would certainly create an omitted variable bias.
 
 "taille_menage"	nombre de personnes dans le ménage
 ```{r}
@@ -121,15 +128,19 @@ prop.table(table(df_q1$taille_menage, is.na(df_q1$salhoraire)), margin = 1) * 10
 
 There seems to be a non-response bias since the missing data rate varies by household size (though we should be careful as there are very few large households). In any case, the number of missing values is too high to trust the correlation coefficient. Can we follow economic logic instead ?
 
-As we have no clear economic intuitions and we did not found information about links of wage and origin with number of people in a housing we will just try to add taille_menage in the model seeing if it add quality (R^2) and if is coefficient is significant but we will not fight for it to be in the model.
+As we have no clear economic intuitions and we did not found information about links of wage and origin with number of people in a housing we will just try to add ***taille_menage*** in the model seeing if it add quality (R^2) and if is coefficient is significant but we will not fight for it to be in the model.
 
 I HAVE NO OBVIOUS RELATIONS WITH TAILLE_MENAGE risque = corrélé à origine mais pas à salaire ????? mettre pas mettre
 
 EST CE QUE DE MANIERE GENERALE CA FAIT SENS DE CALCULER COEF DE COR AVEC 5000 VALEURS MANQUANTES ET COMMENT ON FAIT POUR REG ? IMPUTATION ?
 
+"csp_actif"
+"csp_actif_int"
+"csp_actif_detaille"
 
+We include ***csp_actif*** as a control because it is strongly correlated with wages and is standard in the literature to isolate the effect of social status. We prefer the aggregate csp_actif over more detailed versions like csp_actif_int or csp_actif_detaille to avoid having too small sample sizes in specific sub-categories, which would lead to less robust estimates.
 
-"age"
+***"age"***
 We will include age as a control variable because it serves as a proxy for accumulated professional experience. To not include age would bias the results, as any age differences between origin groups could be incorrectly attributed to their origin rather than their career stage.
 
 
@@ -144,7 +155,7 @@ immi (1st Generation): These individuals may face specific barriers like non-rec
 
 desc (2nd Generation): They were born and educated in France. If they still face wage gaps compared to the "Native" group, it suggests discrimination or social reproduction rather than a lack of integration or foreign diplomas.
 
-As proposed in the appendix of the wording it could be interesting to add an interaction variable origin*immi, we thus could see if the penalty of having a certain origin is the same for a 1st generation immigrant as it is for a 2nd generation descendant.
+As proposed in the appendix of the wording it could be interesting to add an interaction variable ***origin*imm***, we thus could see if the penalty of having a certain origin is the same for a 1st generation immigrant as it is for a 2nd generation descendant.
 
 Moreover, we would not need to add desc as if immi = 0 since the information about being a descendant is already contained in the combination of origin != 01 and immi = 0.
 
@@ -157,7 +168,7 @@ Since our goal is more to test the effect of origin on hourly wages than the eff
 
 We include matri as a control variable because it is often correlated with both the individual’s origin (due to different cultural structures) and their hourly wage, as marital status can be a sign of stability associated with higher earnings.
 
-Since matri has no missing values and is a more widespread indicator than pacs, which has 5,834 missing values, we prioritize adding matri to our model.
+Since matri has no missing values and is a more widespread indicator than pacs, which has 5,834 missing values, we prioritize adding ***matri*** to our model.
 
 ```{r}
 # number of NA for matri and pacs
@@ -165,7 +176,7 @@ sum(is.na(df_q1$matri))
 sum(is.na(df_q1$pacs))
 ```
 
-"homme"
+***"homme"***
 We include the gender indicator homme to control for the gender wage gap in the labor market.
 
 
@@ -213,7 +224,7 @@ sum(is.na(df_q1$informel[is.na(df_q1$salhoraire) == FALSE]))
 Since ancchom, informel and ancinactif have more than 5,000 NA out of 10,000 observations (which are for most of them different from the NA of salhoraire) and are not central to answering Question 1, we prioritize maintaining a larger and more representative sample and do not add them.
 
 
-"education"	diplome le plus eleve obtenu (6 postes)
+***"education"***	diplome le plus eleve obtenu (6 postes)
 "education_detail1"	diplome le plus eleve obtenu (16 postes)
 "education_detail2"	diplome le plus eleve obtenu (11 postes)
 
@@ -221,18 +232,25 @@ Education is surely correlated with hourly wage, and adding it allows us to isol
 
 
 
-expe_specifique	anciennete dans l entreprise (ou fonction publique) en mois
+***expe_specifique***	anciennete dans l entreprise (ou fonction publique) en mois
 ```{r}
 sum(is.na(df_q1$expe_specifique[is.na(df_q1$salhoraire) == FALSE]))
 ```
 It is also very relevant to include expe_specifique because it controls for the increase in the wage linked with firm-specific skills, allowing us to compare individuals of different origins at equal levels of stability in terms of staying in a company.
 
-csp_mere	CSP de la mere (niveau detaille 2 chiffres)
-csp_pere	CSP du pere (niveau detaille 2 chiffres)
+
+***plract***	indicatrice d exercer plusieurs activites professionnelles distinctes
+We include plract (multiple job-holding) as a control variable. Holding more than one job may indicate financial necessity and might be correlated to having low wages. Since this propensity might also differ by origin, controlling for it can be interesting.
+```{r}
+sum(is.na(df_q1$plract[is.na(df_q1$salhoraire) == FALSE]))
+```
+
+***csp_mere***	CSP de la mere (niveau detaille 2 chiffres)
+***csp_pere***	CSP du pere (niveau detaille 2 chiffres)
 
 We include both csp_pere and csp_mere to control for social background, ensuring that the estimated effect of origin is not biased by the some social reproduction of professional status from the parents. BOTH ???? - agregate them ????
 
-sante_declaree	appreciation personnelle de son etat de sante, NB a t=1,6 uniquement
+***sante_declaree***	appreciation personnelle de son etat de sante, NB a t=1,6 uniquement
 
 We include sante_declaree as it is fully reported at t=6 and serves as a proxy for individual productivity, which directly impacts hourly wages.
 
@@ -246,7 +264,7 @@ We include sante_declaree as it is fully reported at t=6 and serves as a proxy f
 "compenheuresup"	nature de compensation auxquelles donnent droit les heures supplementaires
 "jourtra"	nombre de jours habituellement travailles par semaine
 
-We exclude heuretra, jourtra and salmensuel since salhoraire is already built on wage/time worked, creating a model would lose part of its interest. However, we can try to include typehoraire and compenheuressup to control for job-specific characteristics and compensation schemes—such that naturally influence the hourly wage. (PHRASE POURRIE TROUVER MEILLEURS ARGUMENTS)
+We exclude heuretra, jourtra and salmensuel since salhoraire is already built on wage/time worked, creating a model would lose part of its interest. However, we can try to include ***typehoraire*** and ***compenheuressup*** to control for job-specific characteristics and compensation schemes—such that naturally influence the hourly wage. (PHRASE POURRIE TROUVER MEILLEURS ARGUMENTS)
 
 Des formes fonctionnelles particulières:
 
@@ -297,74 +315,128 @@ The quadratic form makes less sens for experience in the level and log level mod
 ```{r}
 names(df_q1)
 ```
-
-
-Tests de régression:
 ```{r}
-# 1. Level-Level Model (Baseline)
-
-reg1_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
-                as.factor(education) + expe_specifique + 
-                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
-                zus + as.factor(tuu_r), data = df_q1)
-summary(reg1_level)
-
-# 2.avec en + département potentiellement redondant avec tuu_r
-reg2_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
-                as.factor(education) + expe_specifique + 
-                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
-                zus + as.factor(tuu_r) + dep, data = df_q1)
-
-summary(reg2_level)
-# 3.avec en + région au lieu de département
-reg3_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
-                as.factor(education) + expe_specifique + I(expe_specifique^2) + 
-                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
-                zus + as.factor(tuu_r) + region, data = df_q1)
-summary(reg3_level)
-
-# 4.avec expe en quadratique (par intuition économique malgré forme du nuage de point ci-avant)
-reg4_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
-                as.factor(education) + expe_specifique + I(expe_specifique^2) + 
-                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
-                zus + as.factor(tuu_r), data = df_q1)
-summary(reg4_level)
-#ça n'améliore pas vraiment ni R**2 ni significativité statistique ou même économique
-
-# 5. avec taille_menage
-reg5_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
-                as.factor(education) + expe_specifique + I(expe_specifique^2) + 
-                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
-                zus + as.factor(tuu_r) + taille_menage, data = df_q1)
-
-summary(reg5_level)
-# c'est mieux on le garde taille_menage
+sum(is.na(df_q1$csp_actif))
+```
 
 
+**Tests de régression:**
+
+
+
+```{r}
+# Converting numerical codes to factors for correct interpretation
+df_q1 <- df_q1 %>% 
+  mutate(
+    # Variables of interest 
+    origine = as.factor(origine),
+    immi = as.factor(immi),
+    
+    # Categorical controls (Dummies)
+    csp_actif = as.factor(csp_actif),
+    education = as.factor(education),
+    homme = as.factor(homme),
+    matri = as.factor(matri),
+    zus = as.factor(zus),
+    tuu_r = as.factor(tuu_r),
+    typuu = as.factor(typuu),
+    sante_declaree = as.factor(sante_declaree),
+    csp_pere = as.factor(csp_pere),
+    csp_mere = as.factor(csp_mere),
+    typehoraire = as.factor(typehoraire),
+    compenheuresup = as.factor(compenheuresup)
+  )
+
+# INCREMENTAL REGRESSION MODELS
+
+# 1. Baseline Model: Standard predictors in the literature
+reg0_level <- lm(salhoraire ~ origine + age + homme + csp_actif + education, data = df_q1)
+
+# 2. Migration Interaction: Testing if the origin effect differs between immigrants and descendants of immigrants
+reg1_level <- lm(salhoraire ~ origine * immi + age + homme + csp_actif + education, data = df_q1)
+
+# 3. Quadratic Age: Capturing non-linear diminishing returns to experience
+reg2_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education, data = df_q1)
+
+# 4. Firm-Specific Experience: Controlling for tenure-based wage premiums
+reg3_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + expe_specifique, data = df_q1)
+
+# 5. Social Background: Adding parental CSP to isolate origin from social reproduction
+reg4_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + csp_pere + csp_mere, data = df_q1)
+
+# 6. Health Capital: Proxy for individual productivity (reported at t=6)
+reg5_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + sante_declaree, data = df_q1)
+
+# 7. Household Structure: Controlling for marital status and household size
+reg6_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + matri + taille_menage, data = df_q1)
+
+# 8. Spatial Segregation: Controlling for neighborhood effects (ZUS) and urban density (TUU)
+reg7_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + zus + tuu_r, data = df_q1)
+
+# 9. Working Conditions: Including compensating differentials (schedules, overtime, plract)
+reg8_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + typehoraire + compenheuresup + plract, data = df_q1)
+
+# 10. Comprehensive Synthesis: Combining the most economically significant controls
+reg9_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + 
+                 expe_specifique + csp_pere + sante_declaree + zus + tuu_r + typehoraire, data = df_q1)
+summary(reg0_level)
+```
+
+```{r}
+# --- LOG-LEVEL INCREMENTAL MODELS ---
+
+# 1. Baseline Model
+reg0_log <- lm(logsalhoraire ~ origine + age + homme + csp_actif + education, data = df_q1)
+
+# 2. Migration Interaction (The "Interest" variables)
+reg1_log <- lm(logsalhoraire ~ origine * immi + age + homme + csp_actif + education, data = df_q1)
+
+# 3. Quadratic Age (Capturing the concave earnings profile)
+reg2_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education, data = df_q1)
+
+# 4. Firm-Specific Experience
+reg3_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + expe_specifique, data = df_q1)
+
+# 5. Social Background (Parental CSP)
+reg4_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + csp_pere + csp_mere, data = df_q1)
+
+# 6. Health Capital
+reg5_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + sante_declaree, data = df_q1)
+
+# 7. Household Structure
+reg6_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + matri + taille_menage, data = df_q1)
+
+# 8. Spatial Segregation (ZUS & Urban Density)
+reg7_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + zus + tuu_r, data = df_q1)
+
+# 9. Working Conditions (including multiple job-holding 'plract')
+reg8_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + typehoraire + compenheuresup + plract, data = df_q1)
+
+# 10. Synthesis (arbitrage sur redondance) Model
+reg9_log <- lm(logsalhoraire ~ origine * immi + age + I(age^2) + homme + csp_actif + education + 
+                expe_specifique + csp_pere + sante_declaree + zus + tuu_r + typehoraire, data = df_q1)
 ```
 
 
 
-
-
-
 ```{r}
-# 2. Log-Level Model (core model)
-reg1_log <- lm(log(salhoraire) ~ origine * immi + age + I(age^2) + homme + 
-              as.factor(education) + expe_specifique + 
-              as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
-              zus + as.factor(tuu_r), data = df_q1)
 
-# Compare the two using AIC (Lower is better)
-# Note: To compare AIC of log vs level, you must adjust the log-AIC manually,
+
+# Compare the two using AIC 
+# Note: To compare AIC of log vs level, you must adjust the log-AIC manually, ?!!!!!!!!!!!!!!!!!
 # but usually, we choose based on the distribution of residuals.?????? revoir
-summary(reg1_log)
 ```
 ```{r}
+# Create a table with the coefficients and indicator of each model
 models <- list(
-  "reg1_log" = reg1_log,
-  "reg1_level" = reg1_level,
-  "reg2_level" = reg2_level
+  # Level models
+  "M0_Lev" = reg0_level, "M1_Lev" = reg1_level, "M2_Lev" = reg2_level, "M3_Lev" = reg3_level,
+  "M4_Lev" = reg4_level, "M5_Lev" = reg5_level, "M6_Lev" = reg6_level, "M7_Lev" = reg7_level,
+  "M8_Lev" = reg8_level, "M9_Lev" = reg9_level,
+  # Log models
+  "M0_Log" = reg0_log, "M1_Log" = reg1_log, "M2_Log" = reg2_log, "M3_Log" = reg3_log,
+  "M4_Log" = reg4_log, "M5_Log" = reg5_log, "M6_Log" = reg6_log, "M7_Log" = reg7_log,
+  "M8_Log" = reg8_log, "M9_Log" = reg9_log
 )
 
 modelsummary(models, 
@@ -372,9 +444,5 @@ modelsummary(models,
              title = "Résultats des régressions")
 ```
 
-
-```{r}
-mod <- lm(logsalhoraire ~ origine + tuu, data = df_q1)
-plot(mod, which = 1)
-```
+FINALEMENT EXPLIQUER LES RAISONS (R**2) et éco qui font qu'on choisit parmi log-niveau puis choisir parmi aic R**2 significativité des coefs....
 
