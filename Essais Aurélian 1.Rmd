@@ -1,0 +1,216 @@
+---
+title: "Project Econometrics - essais Aurélian 1"
+author: "Aurélian"
+date: "2026-04-08"
+output: html_document
+---
+
+We install the general packages we need for the data manipulations
+```{r}
+if(!require(sjlabelled)) install.packages("sjlabelled")
+if(!require(haven)) install.packages("haven")
+if(!require(haven)) install.packages("tidyverse")
+
+library(haven) # to open a .dta file
+library(tidyverse)
+library(sjlabelled)
+```
+
+We import the data
+```{r}
+df <- read_dta("DM_Subject_2_Data.dta")
+```
+
+We recreate, correctly, the "salhoraire" variable
+```{r}
+data$salhoraire = data$salmensuel / (data$heuretra * 4.33)
+```
+
+Question 1
+
+In the general case, the wage is registered for the first and the last quarters (T=1,2),
+among six quarters (t=1,2,3,4,5,6).
+Ici, we restrict us to the last quarter (ie, t=6).
+
+We use filter to apply this restriction to our dataframe.
+```{r}
+df_q1 <- df %>% 
+  filter(t==6)
+```
+
+1a) Estimation of the effect of some variables on wages
+
+```{r}
+summary(df_q1)
+
+df_q1 <- df_q1 %>% 
+  mutate(nat = as.numeric(nat),
+```
+
+
+```{r}
+```
+
+
+```{r}
+origine = as.numeric(origine),
+         csp_actif = as.numeric(csp_actif))
+
+reg1 <- lm(salhoraire ~ nat + origine + age + homme + csp_actif, df_q1)
+summary(reg1)
+
+```
+
+Minimal theoretical models:
+log(salhoraire)= Beta_0 +Beta_origin*origin + u
+ou
+salhoraire= Beta_0 +Beta_origin*origin + u
+
+One thing we want when estimating the effect of origin on individual's wages by linear regression is to find an unbiased estimator of the parameter associated to origin in such a regression.
+For that to be verified, we need:
+-1) the linearity in the parameter (we will specify our models to do so);
+-2) the randomised sample (we have no hold over it but we may discuss it later);
+-3) the non-perfect colinearity of the independent variables we are going to choose in our model (we will have to check it for each added variable);
+-4) And then the nullity of the conditional expectation of the error term of the regression (E[epsilon|origin]=0), 
+
+For (4) to be true, we will have to check if we have:
+- a) the good specification of the functional form;
+- b) no omitted variable;
+(and (c) no inverse causality or (d) measurement errors - those two cases are more linked with the data construction and we will not really delay on them ).
+
+Let's try to find an unbiased estimator of the effect of origin on salhoraire or logsalhoraire.
+
+
+"annee" and "trimestre": it does not make sens to add them in the regression since we ignore the Panel dimension in this question
+
+"dep" and "region": it seems economically plausible that the department/ region of the indivuduals influenced their wages, independently of their origin (do we need to test it by ANOVA or something since corr coeff is impossible???)
+Moreover, these variables are certainly not perfectly colinear with the origin so it makes sens to include (one of) them, it will lower the omitted variable bias but not add perfect colinearity. The question is to know if it worth to add both. Indeed, since department are included in region we can believe that adding region will not add much information (let's try both and see which models are the best).
+```{r}
+#liste variables + labels
+data.frame(Label = get_label(df))
+```
+
+
+"tuu"	tranche unite urbaine pour le logement, donnees 2010
+"tuu_r"	tranche (regroupee) unite urbaine pour le logement, donnees 2010
+"typuu"	type unite urbaine: R rural, U urbain, donnees 2010
+
+These three variables deal with the urban categories in terms of density or number of housings. They might be correlated to both origin (cities are usually more metropolitan than countryside) and salhoraire (the cost and living and thus the wages are usually different whether you live in suburbs, city center or rural areas). Adding, at least, one of them could help to isolate the effect of origin on hourly wages. But, as before it might not be interesting adding them all in the model because they are redundant so it would not be clearly interpretable and it would add a lot of multicolinearity (if we suppose they are really correlated with origine) and thus increase the variance of beta_origine as well as those of Beta_tuu/tuu_r/typeuu without adding much information( well, the other thing we are interested in is to have a precise estimator (Beta_origine) that is to say with correct and small standard error ).
+
+So we will try with "typuu" and/or "tuu_r" that are more easy to interpret.
+
+
+"zus" indicatrice d'appartenance à une zone urbaine sensible, can also be interesting to add for the same reasons as the previous variables (probably correlated with both origine (due to spatial segregation) and salhoraire(due to neighborhood effects, restricted job networks, or address-based discrimination)). Thus, omitting it would certainly create an omitted variable bias.
+
+"taille_menage"	nombre de personnes dans le ménage
+```{r}
+cor(df_q1$taille_menage, df_q1$salhoraire, use = "complete.obs")
+```
+```{r}
+# The correlation coefficient is very weak (~0.008). Since complete.obs removes rows with NAs during calculation, let's examine how the missing wage values are distributed across household sizes. This will help determine if this correlation coefficient is meaningful or if it suffers from selection bias.
+table(df_q1$taille_menage)
+sum(is.na(df_q1$salhoraire))
+
+# Proportion of NAs (TRUE) vs. reported values (FALSE) by household size
+prop.table(table(df_q1$taille_menage, is.na(df_q1$salhoraire)), margin = 1) * 100
+```
+
+There seems to be a non-response bias since the missing data rate varies by household size (though we should be careful as there are very few large households). In any case, the number of missing values is too high to trust the correlation coefficient. Can we follow economic logic instead ?
+
+As we have no clear economic intuitions and we did not found information about links of wage and origin with number of people in a housing we will just try to add taille_menage in the model seeing if it add quality (R^2) and if is coefficient is significant but we will not fight for it to be in the model.
+
+I HAVE NO OBVIOUS RELATIONS WITH TAILLE_MENAGE risque = corrélé à origine mais pas à salaire ????? mettre pas mettre
+
+EST CE QUE DE MANIERE GENERALE CA FAIT SENS DE CALCULER COEF DE COR AVEC 5000 VALEURS MANQUANTES ET COMMENT ON FAIT POUR REG ? IMPUTATION ?
+
+
+
+"age"
+We will include age as a control variable because it serves as a proxy for accumulated professional experience. To not include age would bias the results, as any age differences between origin groups could be incorrectly attributed to their origin rather than their career stage.
+
+
+"nat_mere"	nationalite de naissance de la mere
+"nat_pere"	nationalite de naissance du pere
+Those two variables gather (approximatively) the same information than origin, it would be useless (and dangerous -perfect colinearity) to add them.
+
+"descimmi"	indicatrice d etre descendant d immigre
+"immi"	indicatrice d etre immigre, ne etranger a l etranger
+
+immi (1st Generation): These individuals may face specific barriers like non-recognized foreign diplomas, language difficulties, or a lack of local professional networks.
+
+desc (2nd Generation): They were born and educated in France. If they still face wage gaps compared to the "Native" group, it suggests discrimination or social reproduction rather than a lack of integration or foreign diplomas.
+
+As proposed in the appendix of the wording it could be interesting to add an interaction variable origin*immi, we thus could see if the penalty of having a certain origin is the same for a 1st generation immigrant as it is for a 2nd generation descendant.
+
+Moreover, we would not need to add desc as if immi = 0 since the information about being a descendant is already contained in the combination of origin != 01 and immi = 0.
+
+"nat" nationnalité
+Since our goal is more to test the effect of origin on hourly wages than the effect of nationnality (which would as well include some legal barrier to access some job in administrations for instance), we prefer not to include it.
+
+
+"matri" statut matrimonial legal
+"pacs" indicatrice d etre pacse
+
+We include matri as a control variable because it is often correlated with both the individual’s origin (due to different cultural structures) and their hourly wage, as marital status can be a sign of stability associated with higher earnings.
+
+Since matri has no missing values and is a more widespread indicator than pacs, which has 5,834 missing values, we prioritize adding matri to our model.
+
+```{r}
+# number of NA for matri and pacs
+sum(is.na(df_q1$matri))
+sum(is.na(df_q1$pacs))
+```
+
+"homme"
+We include the gender indicator homme to control for the gender wage gap in the labor market.
+
+
+"acteu"	statut sur le marche du travail au sens du BIT
+"acteu_detail"	statut detaille sur le marche du travail au sens du BIT
+"actif"	indicatrice d etre actif sur le marche du travail au sens du BIT
+"actop"	indicatrice d etre actif occupe sur le marche du travail au sens du BIT
+"chomeur"	indicatrice d etre chomeur sur le marche du travail au sens du BIT
+"ancchom"	anciennete de chomage en mois
+"ancinactif"	anciennete de l inactivite en mois
+"halochomage"	halo autour du chomage
+"informel"	indicatrice d exercice d une activite informelle durant sem. ref.
+```{r}
+# Création d'un tableau croisé entre le statut chômeur et la présence de NA dans le salaire
+table(df_q1$chomeur, is.na(df_q1$salhoraire))
+```
+We observe that none of the 324 unemployed individuals have a reported wage (all are TRUE for is.na).Since the hourly wage is not recorded for the unemployed, there is no benefit in adding the indicator "chomeur" to the regression.
+
+```{r}
+# Tableau croisé entre le statut détaillé et la présence de salaire
+# On utilise acteu_detail pour voir précisément qui ne répond pas
+check_status <- table(df_q1$acteu_detail, is.na(df_q1$salhoraire), useNA = "always")
+
+# On renomme les colonnes pour que ce soit plus clair
+colnames(check_status) <- c("A un salaire (is.na = FALSE)", "Salaire Manquant (TRUE)", "NA Variable acteu_detail")
+rownames(check_status) <- c("1-Employed", "3-Unemployed (Seeking)", "4-Other Unemployed", 
+                            "5-Student", "6-Other Inactive", "NA Variable")
+
+print(check_status)
+```
+Every unemployed individuals, students, and other inactives in the sample have no reported wage. Therefore, including these labor market status indicators in our regression is statistically irrelevant, as they provide no variation within the sub-sample of workers (we will have design matrix X which will have the column of acteu_detailed and intercept equal - so X'X not inversible).
+
+We deduce that it is the same for "acteu", "actif" and "actop" so we cannot put any of them in our model.
+
+```{r}
+#nombre de NA par variable
+sum(is.na(df_q1$ancchom))
+sum(is.na(df_q1$ancinactif))
+sum(is.na(df_q1$informel))
+```
+Since ancchom, ancinactif and informel have more than 5000 NA out of 10 0000 observations and they are not central to answer question 1, we prioritize maintaining a larger, more representative sample, we don't add them.
+
+
+
+
+
+
+```{r}
+mod <- lm(logsalhoraire ~ origine + tuu, data = df_q1)
+plot(mod, which = 1)
+```
+
