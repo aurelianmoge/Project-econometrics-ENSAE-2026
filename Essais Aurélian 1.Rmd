@@ -201,12 +201,161 @@ We deduce that it is the same for "acteu", "actif" and "actop" so we cannot put 
 sum(is.na(df_q1$ancchom))
 sum(is.na(df_q1$ancinactif))
 sum(is.na(df_q1$informel))
+# On regarde le nombre de NA pour ancchom,ancinactif et informel  uniquement pour ceux qui ont un salaire
+sum(is.na(df_q1$ancchom[is.na(df_q1$salhoraire) == FALSE]))
+sum(is.na(df_q1$ancinactif[is.na(df_q1$salhoraire) == FALSE]))
+sum(is.na(df_q1$informel[is.na(df_q1$salhoraire) == FALSE]))
 ```
-Since ancchom, ancinactif and informel have more than 5000 NA out of 10 0000 observations and they are not central to answer question 1, we prioritize maintaining a larger, more representative sample, we don't add them.
+Since ancchom, informel and ancinactif have more than 5,000 NA out of 10,000 observations (which are for most of them different from the NA of salhoraire) and are not central to answering Question 1, we prioritize maintaining a larger and more representative sample and do not add them.
+
+
+"education"	diplome le plus eleve obtenu (6 postes)
+"education_detail1"	diplome le plus eleve obtenu (16 postes)
+"education_detail2"	diplome le plus eleve obtenu (11 postes)
+
+Education is surely correlated with hourly wage, and adding it allows us to isolate the effect of origin from educational attainment. For clarity, and to be sure to have enough individuals in each category for a robust estimation, we choose the education variable (6 categories) over the more detailed versions.
+
+
+
+expe_specifique	anciennete dans l entreprise (ou fonction publique) en mois
+```{r}
+sum(is.na(df_q1$expe_specifique[is.na(df_q1$salhoraire) == FALSE]))
+```
+It is also very relevant to include expe_specifique because it controls for the increase in the wage linked with firm-specific skills, allowing us to compare individuals of different origins at equal levels of stability in terms of staying in a company.
+
+csp_mere	CSP de la mere (niveau detaille 2 chiffres)
+csp_pere	CSP du pere (niveau detaille 2 chiffres)
+
+We include both csp_pere and csp_mere to control for social background, ensuring that the estimated effect of origin is not biased by the some social reproduction of professional status from the parents. BOTH ???? - agregate them ????
+
+sante_declaree	appreciation personnelle de son etat de sante, NB a t=1,6 uniquement
+
+We include sante_declaree as it is fully reported at t=6 and serves as a proxy for individual productivity, which directly impacts hourly wages.
+
+
+"heuretra"	nombre d heures travaillees en moyenne par semaine dans l emploi principal, decl
+"heuretra_calculees"	nombre d heures travaillees en moyenne par semaine, calcul nb jour x 7
+"diff_heuretra"	difference heuretra - heuretra_calculees
+"heuretra_tranche"	nombre d heures travaillees en moyenne par semaine dans l emploi principal, en t
+"typehoraire"	type d horaires effectues dans l emploi principal
+"heuretrasouhait"	nombre heure de travail souhaite dans l ideal, avec variation associee de revenu
+"compenheuresup"	nature de compensation auxquelles donnent droit les heures supplementaires
+"jourtra"	nombre de jours habituellement travailles par semaine
+
+We exclude heuretra, jourtra and salmensuel since salhoraire is already built on wage/time worked, creating a model would lose part of its interest. However, we can try to include typehoraire and compenheuressup to control for job-specific characteristics and compensation schemes—such that naturally influence the hourly wage. (PHRASE POURRIE TROUVER MEILLEURS ARGUMENTS)
+
+Des formes fonctionnelles particulières:
+
+It is likely that age and experience have non-linear relationships with hourly wages, as their marginal impact typically increases during the early career before eventually diminishing. We will test whether a quadratic specification is appropriate to capture these diminishing returns.
+
+```{r}
+#courbe 
+library(ggplot2)
+ggplot(df_q1, aes(age, logsalhoraire)) + 
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2))#???revoir
+```
+```{r}
+plot(df_q1$age, df_q1$salhoraire,
+     xlab = "Age", ylab = "Hourly wage",
+     main = "Relation between Age and Hourly Wage",
+     pch = 19, col = "blue", cex = 0.5)
+```
+```{r}
+plot(df_q1$age, df_q1$logsalhoraire,
+     xlab = "Age", ylab = "log of Hourly wage",
+     main = "Relation between Age and log of Hourly Wage",
+     pch = 19, col = "blue", cex = 0.5)
+```
+
+The concave, bell-shaped pattern of the scatter plot  suggests testing a quadratic specification for age in the Level model and the Log Level one.
+
+```{r}
+summary(lm(salhoraire ~ age + I(age^2), data=df_q1))
+```
+Le coefficient associé à age^2 n'est pas significatif à aucun seuil ----- donc quadratique à nuancer on ne sais pas ??
+```{r}
+plot(df_q1$expe_specifique, df$salhoraire,
+     xlab = "experience", ylab = "Hourly wage",
+     main = "Relation between Experience and Hourly Wage",
+     pch = 19, col = "blue", cex = 0.5)
+```
+```{r}
+plot(df_q1$expe_specifique, df$logsalhoraire,
+     xlab = "experience", ylab = "Log Hourly wage",
+     main = "Relation between Experience and log Hourly Wage",
+     pch = 19, col = "blue", cex = 0.5)
+
+```
+
+The quadratic form makes less sens for experience in the level and log level models.
+
+
+```{r}
+names(df_q1)
+```
+
+
+Tests de régression:
+```{r}
+# 1. Level-Level Model (Baseline)
+
+reg1_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
+                as.factor(education) + expe_specifique + 
+                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
+                zus + as.factor(tuu_r), data = df_q1)
+summary(reg1_level)
+
+# 2.avec en + département potentiellement redondant avec tuu_r
+reg2_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
+                as.factor(education) + expe_specifique + 
+                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
+                zus + as.factor(tuu_r) + dep, data = df_q1)
+
+summary(reg2_level)
+# 3.avec en + région au lieu de département
+reg3_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
+                as.factor(education) + expe_specifique + I(expe_specifique^2) + 
+                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
+                zus + as.factor(tuu_r) + region, data = df_q1)
+summary(reg3_level)
+
+# 4.avec expe en quadratique (par intuition économique malgré forme du nuage de point ci-avant)
+reg4_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
+                as.factor(education) + expe_specifique + I(expe_specifique^2) + 
+                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
+                zus + as.factor(tuu_r), data = df_q1)
+summary(reg4_level)
+#ça n'améliore pas vraiment ni R**2 ni significativité statistique ou même économique
+
+# 5. avec taille_menage
+reg5_level <- lm(salhoraire ~ origine * immi + age + I(age^2) + homme + 
+                as.factor(education) + expe_specifique + I(expe_specifique^2) + 
+                as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
+                zus + as.factor(tuu_r) + taille_menage, data = df_q1)
+
+summary(reg5_level)
+# c'est mieux on le garde taille_menage
+
+
+```
 
 
 
 
+
+
+```{r}
+# 2. Log-Level Model (Mincer Standard)
+reg1_log <- lm(log(salhoraire) ~ origine * immi + age + I(age^2) + homme + 
+              as.factor(education) + expe_specifique + 
+              as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
+              zus + as.factor(tuu_r), data = df_q1)
+
+# Compare the two using AIC (Lower is better)
+# Note: To compare AIC of log vs level, you must adjust the log-AIC manually,
+# but usually, we choose based on the distribution of residuals.?????? revoir
+summary(reg_log)
+```
 
 
 ```{r}
