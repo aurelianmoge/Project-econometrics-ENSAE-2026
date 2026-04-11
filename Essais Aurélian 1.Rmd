@@ -9,11 +9,15 @@ We install the general packages we need for the data manipulations
 ```{r}
 if(!require(sjlabelled)) install.packages("sjlabelled")
 if(!require(haven)) install.packages("haven")
-if(!require(haven)) install.packages("tidyverse")
-
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(stargazer)) install.packages("stargazer")
+if(!require(modelsummary)) install.packages("modelsummary")
 library(haven) # to open a .dta file
 library(tidyverse)
 library(sjlabelled)
+library(stargazer)
+library(modelsummary)
+
 ```
 
 We import the data
@@ -345,7 +349,7 @@ summary(reg5_level)
 
 
 ```{r}
-# 2. Log-Level Model (Mincer Standard)
+# 2. Log-Level Model (core model)
 reg1_log <- lm(log(salhoraire) ~ origine * immi + age + I(age^2) + homme + 
               as.factor(education) + expe_specifique + 
               as.factor(matri) + as.factor(csp_pere) + as.factor(typehoraire) + 
@@ -354,7 +358,18 @@ reg1_log <- lm(log(salhoraire) ~ origine * immi + age + I(age^2) + homme +
 # Compare the two using AIC (Lower is better)
 # Note: To compare AIC of log vs level, you must adjust the log-AIC manually,
 # but usually, we choose based on the distribution of residuals.?????? revoir
-summary(reg_log)
+summary(reg1_log)
+```
+```{r}
+models <- list(
+  "reg1_log" = reg1_log,
+  "reg1_level" = reg1_level,
+  "reg2_level" = reg2_level
+)
+
+modelsummary(models, 
+             stars = TRUE, 
+             title = "Résultats des régressions")
 ```
 
 
