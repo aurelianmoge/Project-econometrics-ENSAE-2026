@@ -12,11 +12,14 @@ if(!require(haven)) install.packages("haven")
 if(!require(tidyverse)) install.packages("tidyverse")
 if(!require(stargazer)) install.packages("stargazer")
 if(!require(modelsummary)) install.packages("modelsummary")
+if(!require(AER)) install.packages("AER")
 library(haven) # to open a .dta file
 library(tidyverse)
 library(sjlabelled)
 library(stargazer)
 library(modelsummary)
+library(dplyr)
+library(AER)
 
 ```
 
@@ -272,12 +275,7 @@ Des formes fonctionnelles particulières:
 
 It is likely that age and experience have non-linear relationships with hourly wages, as their marginal impact typically increases during the early career before eventually diminishing. We will test whether a quadratic specification is appropriate to capture these diminishing returns.
 
-```{r}
-#courbe 
-library(ggplot2)
-ggplot(df_q1, aes(age, logsalhoraire)) + 
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2))#???revoir
-```
+
 ```{r}
 plot(df_q1$age, df_q1$salhoraire,
      xlab = "Age", ylab = "Hourly wage",
@@ -309,6 +307,14 @@ plot(df_q1$expe_specifique, df$logsalhoraire,
      main = "Relation between Experience and log Hourly Wage",
      pch = 19, col = "blue", cex = 0.5)
 
+```
+
+
+```{r}
+#courbe de régression simple non paramétrique sur des sous ensembles de points (~LOESS)
+library(ggplot2)
+ggplot(df_q1, aes(age, logsalhoraire)) + 
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2))#???revoir
 ```
 
 The quadratic form makes less sens for experience in the level and log level models.
@@ -478,8 +484,54 @@ To address the main problem mentioned in (2a), we can use an Instrumental Variab
 For a variable Z to be a valid instrument, it must satisfy two conditions:
 
 1) Relevance: $Cov(\text{educ}, Z) \neq 0$. The instrument must be strongly correlated with education.
-2) Exogeneity: $Cov(\text{wage}, Z) = 0$. Z should not be correlated with the error term; it should only impact wages indirectly through education.By intuition, csp_mere or csp_pere seem to be good choices:
+2) Exogeneity: $Cov(\text{salhoraire}, Z) = 0$. Z should not be correlated with the error term; it should only impact wages indirectly through education.By intuition, csp_mere or csp_pere seem to be good choices:
 Relevance: Parental socio-professional category influences a lot the willingness and capacity to pursue long studies, often through social reproduction or different visions of job possibilities.
 Exogeneity: Parental CSP impacts wages primarily indirectly. Even if it shapes educational choices and cultural capital, an individual's current hourly wage is mostly determined by their own qualifications and career path, making any remaining direct influence from parents' status possibly negligible.
 
-OTHER IDEAS ??
+In the same vein, we can think to nat_mere or nat_pere:
+Relevance: Cultural background and access to specific scholarships or administrative support due to a parent's nationality can influence the child's educational level.
+
+Exogeneity: Aside from its impact on education , we can believe that a parent's nationality does not influence the innate talent or productivity of their children at work, and therefore does not directly influence their wage. There might remains a potential small residual discrimination based on foreign name, etc. so these instrument might be a little less valid than csp_mere or csp_pere. 
+
+
+OTHER IDEAS OF RESIDUALS??
+
+To identify the causal effect of one exogeneous variable, we need one valid instrument (one instrument for each exogeneous variable of our model).
+Since we treat education as a categorical variable, each level (represented by a dummy variable) is potentially endogenous. Therefore, we need at least as many instruments as there are education levels (minus the reference category). Using csp_mere as a categorical instrument, for instance, provides enough instruments to identify the effect of each education level (which is also the case for nat_mere/pere)
+
+However, the csp_mere and csp_pere variables have too many categories (more than 30!). For the instruments to be robust, each category must contain a significant number of individuals. To achieve this, we will group them by "Groupe Socioprofessionnel" (the 1st digit level) according to the INSEE nomenclature. This grouping ensures we have enough instruments to satisfy the order condition while maintaining statistical power.
+
+
+```{r} 
+# concatenation according to INSEE categories "Groupes Socioprofessionnel" (we just group by the first digit of each code)
+
+
+df_q1 <- df_q1 %>%
+  mutate(
+    # On prend le premier chiffre de la CSP du père et de la mère
+    csp_pere_gp = substr(as.character(csp_pere), 1, 1),
+    csp_mere_gp = substr(as.character(csp_mere), 1, 1)
+  ) %>%
+  mutate(
+    # On les transforme en facteurs pour la régression
+    csp_pere_gp = as.factor(csp_pere_gp),
+    csp_mere_gp = as.factor(csp_mere_gp)
+  )
+
+summary(df_q1$csp_mere_gp)
+```
+We have 8 instruments > 5 exogenous variables (6 levels of education so 5 indicators/dummies in the model).
+
+
+###2c) 
+We are going to use the 2SLS to estimate these model (trough function ivreg).
+```{r}
+library(AER)
+
+# 2SLS Model 
+model_iv_1 <- ivreg(logsalhoraire ~ education + origine |  csp_mere_gp + origine, data = df_q1)
+model_iv_2 <- ivreg(logsalhoraire ~ education + origine |  nat_pere + origine, data = df_q1)
+# Pour voir les résultats et les tests de diagnostic (Sargan, Weak instruments) ???? nécessaire ??? revoir
+summary(model_iv_2, diagnostics = TRUE)
+```
+#INTErprétation à finir  + voir si 2C) veulent meme modele que Q1 ou non
