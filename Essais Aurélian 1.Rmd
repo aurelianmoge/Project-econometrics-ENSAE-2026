@@ -30,7 +30,7 @@ df <- read_dta("DM_Subject_2_Data.dta")
 
 We recreate, correctly, the "salhoraire" variable
 ```{r}
-data$salhoraire = data$salmensuel / (data$heuretra * 4.33)
+df$salhoraire = df$salmensuel / (df$heuretra * 4.33)
 ```
 
 ## Question 1
@@ -52,6 +52,8 @@ summary(df_q1)
 
 df_q1 <- df_q1 %>% 
   mutate(nat = as.numeric(nat),
+         origine = as.numeric(origine),
+         csp_actif = as.numeric(csp_actif))
 ```
 
 **A First Regression**
@@ -59,12 +61,10 @@ df_q1 <- df_q1 %>%
 To begin, we can try a first regression of salhoraire/logsalhoraire on variables that are commonly used in the literature to explain wages, that is to say: experience, age, gender, education and socio-professional category. We also include origin as it is the independent variable we are interested in.
 
 ```{r}
-origine = as.numeric(origine),
-csp_actif = as.numeric(csp_actif))
 
-reg0_level <- lm(salhoraire ~ origine + age + homme + csp_actif+education, df_q1)
+reg0_level <- lm(salhoraire ~ origine + age + homme + csp_actif+ education, df_q1)
 
-reg0_log <- lm(logsalhoraire ~ origine + age + homme + csp_actif+education, df_q1)
+reg0_log <- lm(logsalhoraire ~ origine + age + homme + csp_actif+ education, df_q1)
 summary(reg0_level)
 summary(reg0_log)
 
@@ -455,17 +455,90 @@ modelsummary(models,
 FINALEMENT EXPLIQUER LES RAISONS (R**2) et éco qui font qu'on choisit parmi log-niveau puis choisir parmi aic R**2 significativité des coefs....
 
 
+
 Du point de vue R**2 et des AIC/BIC M3 Log est le mieux -- petit problème les coefficients associés aux origines ne sont significatifs statistiquement DANS AUCUN MODELE ---POSSIBLE DE CREER UNE VARIABLE BINAIRE ORIGINE IMIGRE OU C'EST PAS CE QUI VEULENT ?
 
 
+The best model, regarding both its explainibility (through the R^2) and its parsimony (through 
+the AIC and the number of variables) seems to be the LOG_3 model. Indeed, the most efficient
+strategy consists in selecting only some classic variables used in the econometrics of the wages,
+ie sex, age, education and experience. 
 
+However, the log-level specification is better than the level-level one. For example, the effect of sex on the wage is probably quite similar accross the distribution of the wages : whatever the professional sector, men are generally slightly better paid than women. Therefore, being a man leads to a greater average wage, following a certain percentage of difference between sex, and not to a fixed amount of money in addition. That is why the effect of sex on wages is logarithmic : the higher the wage, the higher the effect of sex on wage in level. 
+
+However, the specification is not perfectly log-linear, as the age has mainly a quadratic effect. This can be easily explained by the life cycle theory : the wage increases with age until a pic, and then decreases until retirement and even fastly until death. 
+
+
+
+
+
+#### 1b)
+
+In all our models, the coefficients of the "origine" variable strongly depend on the modality. In other words, compared to being from France, being from another country can have an effect on wage, but this effect is either positive or negative according the country that is considered. 
+
+For example, being from Southern Europe (origine = 4) seems to have, in each model, a positive effect on wage compared to being from France (origine = 1). The effect is opposed for the fact of being from Eastern Europe (origine = 5). 
+
+Nonetheless, almost all the modalities of this variable have a non-significant effect. The fact of being from Southern Europe is, indeed, the only modality that has a significant effect, at the 5% threshold and mainly for the level-level specificated model. On the contrary, the effect of being from Africa or from Middle East is never significant, whatever the model is. 
+
+
+
+#### 1c)
+
+It is likely that the effect of the origin on wages is mediated through other variables. Let construct some models to test that hypothesis.
+
+```{r}
+reg0_test_level <- lm(salhoraire ~ origine, df_q1)
+reg1_test_level <- lm(salhoraire ~ origine + education, df_q1)
+reg2_test_level <- lm(salhoraire ~ origine + contrat, df_q1)
+reg3_test_level <- lm(salhoraire ~ origine + csp_actif, df_q1)
+
+reg0_test_log <- lm(logsalhoraire ~ origine, df_q1)
+reg1_test_log <- lm(logsalhoraire ~ origine + education, df_q1)
+reg2_test_log <- lm(logsalhoraire ~ origine + contrat, df_q1)
+reg3_test_log <- lm(logsalhoraire ~ origine + csp_actif, df_q1)
+
+summary(reg0_test_level)
+summary(reg1_test_level)
+summary(reg2_test_level)
+summary(reg3_test_level)
+
+summary(reg0_test_log)
+summary(reg1_test_log)
+summary(reg2_test_log)
+summary(reg3_test_log)
+
+
+
+```
+```{r}
+models_test <- list(
+  # Level models
+  "M0_Test_Lev" = reg0_test_level, "M1_Test_Lev" = reg1_test_level, "M2_Test_Lev" = reg2_test_level, "M3_Test_Lev" = reg3_test_level,
+  # Log models
+  "M0_Test_Log" = reg0_test_log, "M1_Test_Log" = reg1_test_log, "M2_Test_Log" = reg2_test_log, "M3_Test_Log" = reg3_test_log)
+
+modelsummary(models_test, 
+             stars = TRUE, 
+             title = "Résultats des régressions")
+
+```
+
+
+The comparison between these four models is instructive. Indeed, one can see a concrete mediation of the effect of the origin through other variables, which is not univoque.
+
+For example, in the first level-level model, we see that only 7 and 99 (respectively rest of Africa and unknown) have a significant impact, negative in that case. When we control by education, the effect is lower for rest of Africa and is even no longer significant for unknown. One can assume that people from Africa or whose nationality is unknown have more often a low education than other people, which means that the effect of their origin on their wage is partly mediated through their low education. 
+
+
+But controlling by another variable can also make the effect some modalities significant. Typically, when one controls by the type of contract, the modality 3 (Northern Europe) begins to have a significant and positive impact on wages. This probably means than, among a group of people having the same type of contract, people from Northern Europe have a better wage, in average.
+
+Finally, controlling by the occupation (by the "PCS" in particular) seems to be quite relevant, as the effect of origin is made non-significant that way, no matter what modality is considered. This was previsible, given that the places of people having some origins in the labour market are often different from people coming from France. For example, people from Africa are more often employed in the industry, at some subalterned positions, etc. 
 
 
 
 ## Question 2
 #### 2a)
 
-We can argue that education is partly explained by individual and family choices that themselves depend on origin (e.g.cultural context,etc.). In other words, origin impacts wages largely indirectly through its impact on education. By adding education to the model, the estimated coefficient for origin only captures the direct effect on wages, ignoring the indirect effect through educational pathways that may be created by unobservable factors. Consequently, we can expect the coefficient for origin to become smaller in absolute value than the total effect, as it no longer accounts for the potential disadvantages accumulated during the individual's educational trajectory.
+We can argue that education is partly explained by individual and family choices that themselves depend on origin (e.g.cultural context, access to information on education, resources, etc.). In other words, origin impacts wages largely indirectly through its impact on education. By adding education to the model, the estimated coefficient for origin only captures the direct effect on wages, ignoring the indirect effect through educational pathways that may be created by unobservable factors. Consequently, we can expect the coefficient for origin to become smaller in absolute value than the total effect, as it no longer accounts for the potential disadvantages accumulated during the individual's educational trajectory.
 
 (An other phenomenon, althought that's not really our interest in this question, is that the coefficient for education may be biased due to omitted unobservable factors (such as innate talent or motivation) that simultaneously influence both educational level and wages.)
 
