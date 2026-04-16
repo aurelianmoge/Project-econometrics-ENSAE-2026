@@ -1,70 +1,730 @@
 ---
-title: "Project Econometrics - essais Aurélian 1"
-author: "Aurélian"
-date: "2026-04-08"
-output: html_document
+title: "Project Econometrics"
+author: "Emile Guillaume, Jean Lavallée and Aurélian Moge"
+date: "2026-04-15"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
-We install the general packages we need for the data manipulations
-```{r}
-library(haven) # to open a .dta file
-library(tidyverse)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      cache = TRUE, fig.width = 7, fig.height = 4)
 ```
 
-We import the data
-```{r}
-df <- read_dta("DM_Subject_2_Data.dta")
+# Packages, figure parameters, functions and data
+
+```{r, include=FALSE}
+pkgs <- c("haven", "tidyverse", "sjlabelled", "modelsummary",
+          "AER", "sandwich", "lmtest", "car", "plm", "Formula", "broom",
+          "gridExtra")
+for (p in pkgs) if (!requireNamespace(p, quietly = TRUE)) install.packages(p)
+library(haven); library(tidyverse); library(sjlabelled)
+library(modelsummary); library(AER); library(sandwich)
+library(lmtest); library(car); library(Formula); library(broom)
+library(gridExtra)
+
+# Function for figures theme
+theme_projet <- function() {
+  theme_bw() +
+    theme(
+      legend.position    = "bottom",
+      legend.spacing.y   = unit(0.1, "cm"),
+      legend.key.height  = unit(0.2, "cm"),
+      legend.key.width   = unit(1,   "cm"),
+      panel.border       = element_blank(),
+      axis.line          = element_line(color = "black"),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor   = element_blank()
+    )
+}
+
+# Function for household-clustered robust (HC1) variance
+vcov_robust <- function(m) {
+  vcovCL(m, cluster = ~ id_menage, type = "HC1")
+}
+
+# Function for robust Wald test that all origin dummies are jointly zero
+wald_test_origin <- function(m) {
+  nms <- grep("^origine", names(coef(m)), value = TRUE)
+  if (length(nms) == 0) return(NA_real_)
+  test <- linearHypothesis(m, nms, vcov. = vcov_robust(m),
+                           # Under a robust vcov we use the Chi-square
+                           test = "Chisq")
+  test[2, "Pr(>Chisq)"]
+}
 ```
 
-We recreate, correctly, the "salhoraire" variable
 ```{r}
-df$salhoraire = df$salmensuel / (df$heuretra * 4.33)
+df <- read_dta("DM_Subject_2_Data.dta") %>%
+  mutate(
+    # Factor variables
+    origine        = factor(origine),
+    immi           = factor(immi),
+    descimmi       = factor(descimmi),
+    homme          = factor(homme),
+    education      = factor(education),
+    csp_actif      = factor(csp_actif),
+    matri          = factor(matri),
+    zus            = factor(zus),
+    tuu_r          = factor(tuu_r),
+    region         = factor(region),
+    sante_declaree = factor(sante_declaree),
+    contrat        = factor(contrat),
+    typehoraire    = factor(typehoraire),
+    compenheuresup = factor(compenheuresup),
+    csp_pere_gp    = factor(substr(as.character(csp_pere), 1, 1)),
+    csp_mere_gp    = factor(substr(as.character(csp_mere), 1, 1)),
+    # Correct the "salhoraire" variable
+    salhoraire     = salmensuel/(heuretra * 4.33),
+    # Replace numeric codes with readable labels
+    origine        = fct_recode(origine,
+                       "France"                  = "01",
+                       "Northern Europe"         = "03",
+                       "Southern Europe"         = "04",
+                       "Eastern Europe"          = "05",
+                       "Maghreb"                 = "06",
+                       "Rest of Africa"          = "07",
+                       "Middle East"             = "08",
+                       "Southeast Asia"          = "09",
+                       "RoW"                     = "10",
+                       "Unknown"                 = "99"
+                     ),
+    # France as reference
+    origine        = relevel(origine, ref = "France")
+  )
 ```
 
-Question 1
+# Question 1: Cross-section of wages for employed individuals at t = 6
 
-In the general case, the wage is registered for the first and the last quarters (T=1,2),
-among six quarters (t=1,2,3,4,5,6).
-Ici, we restrict us to the last quarter (ie, t=6).
+## Sample
 
-We use filter to apply this restriction to our dataframe.
-```{r}
-df_q1 <- df %>% 
-  filter(t==6)
-```
-
-1a) Estimation of the effect of some variables on wages
+In the general case, the wage is registered for the first and the last
+quarters (T=1,2), among six quarters (t=1,2,3,4,5,6). Here, we restrict
+our sample to employed individuals (i.e., `acteu == "1"`) in the last
+quarter (i.e., T=2 or `t==6`), for whom hourly wage is available (i.e.,
+`!is.na(salhoraire)`).
 
 ```{r}
-summary(df_q1)
-
-df_q1 <- df_q1 %>% 
-  mutate(nat = as.numeric(nat),
-         origine = as.numeric(origine),
-         csp_actif = as.numeric(csp_actif))
-
-reg1 <- lm(salhoraire ~ nat + origine + age + homme + contrat + csp_actif, df_q1)
-summary(reg1)
-
-
+df_q1 <- df %>% filter(t==6, acteu == "1", !is.na(salhoraire))
 ```
+
+We also inspect individuals interviewed only twice (`rim` indicator, cf.
+hint in the appendix).
+
+```{r sample}
+with(df_q1, table(rim, cut(age, c(-Inf, 30, 50, 65, Inf))))
+```
+
+Eventually, we restrict our sample to observations where no covariate is
+missing
+
 ```{r}
-df_q1 <- df_q1 %>% 
-  mutate(contrat_bis = case_when(
-    contrat == "1" ~ "Permanent",
-    contrat == "2" | contrat == "3" | contrat == "4" | contrat == "5" ~ "Temporaire",
-    TRUE ~ "Aucun"
-  ))
+covariates <- c("salhoraire", "logsalhoraire",
+                 "origine", "immi", "age", "homme", "education",
+                 "region", "tuu_r", "zus", "matri", "sante_declaree",
+                 "csp_actif", "contrat", "typehoraire",
+                 "csp_pere_gp", "csp_mere_gp",
+                 "expe_specifique", "id_menage")
+mask <- complete.cases(df_q1[, covariates])
+df_q1 <- df_q1[mask, ]
+nrow(df_q1)
 ```
 
-On essaie d'ajouter cette variable de contrat "plus simple" dans la régression :
+After filtering observations, we run some descriptive statistics to get
+a good understanding of the dataset.
+
+```{r desc_stats, fig.width=10, fig.height=8}
+# Origin
+df_q1 %>%
+  count(origine) %>%
+  mutate(origine = fct_reorder(origine, n)) %>%
+  ggplot(aes(x = origine, y = n)) +
+  geom_col(fill = "#248BFF") +
+  geom_text(aes(label = n), hjust = -0.15, size = 3.2) +
+  coord_flip(clip = "off") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Distribution of employed individuals by origin (t=6)",
+       x = "Origin", y = "Count") +
+  theme_projet()
+
+# Wages
+df_q1 %>%
+  ggplot(aes(x = logsalhoraire)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 50,
+                 fill = "#248BFF", colour = "white") +
+  geom_density(colour = "#e81757", linewidth = 0.8) +
+  labs(title = "Distribution of log hourly wages (t=6)",
+       x = "Log hourly wage", y = "Density") +
+  theme_projet()
+
+# Log wages by origin
+df_q1 %>%
+  ggplot(aes(x = origine, y = logsalhoraire)) +
+  geom_boxplot(fill = "#248BFF", colour = "#248BFF", alpha=0.2, outlier.size = 0.8) +
+  labs(title = "Log hourly wages by origin (t=6)",
+       x = "Origin", y = "Log hourly wage") +
+  theme_projet()
+```
+
+The descriptive statistics reveal two key features of the data. First,
+the origin distribution is skewed: the vast majority of employed
+individuals at t=6 are of French origin, with relatively small subgroups
+for each foreign origin. This imbalance will affect the precision of the
+origin coefficients. Second, the distribution of log hourly wages is
+approximately normal, supporting the use of a log-level specification.
+The boxplots show moderate variation in median wages across origin
+groups, but with substantial overlap, suggesting that any origin gap
+must be carefully disentangled from other determinants.
+
+## 1a) Estimation of the effect of some variables on wages
+
+### First results
+
+To begin with, we try a few specifications were we regress `salhoraire`
+and `logsalhoraire` on variables that are commonly used in the
+literature to explain wages, i.e., sequentially: age, gender, education,
+location and socio-professional category. We also include `origin` in
+all models as it is the independent variable we are interested in.
+
+We first run specifications in levels
+
 ```{r}
-reg2 <- lm(salhoraire ~ nat + origine + age + homme + contrat_bis + csp_actif, df_q1)
-summary(reg2)
+# (1) Origin only
+reg1_lvl <- lm(salhoraire ~ origine, df_q1)
+
+# (2) Mincer-like specification = (1) + Mincer covariates
+reg2_lvl <- lm(salhoraire ~ origine + age + I(age^2) + homme + education + region, df_q1)
+
+# (3) = (2) + individual and family backgrounds
+reg3_lvl <- lm(salhoraire ~ origine + age + I(age^2) + homme + education + region + expe_specifique + csp_pere_gp + csp_mere_gp + matri + sante_declaree + tuu_r + zus, df_q1)
+
+# (4) = (3) + job characteristics
+reg4_lvl <- lm(salhoraire ~ origine + age + I(age^2) + homme + education + region + expe_specifique + csp_pere_gp + csp_mere_gp + matri + sante_declaree + tuu_r + zus + csp_actif + contrat + typehoraire, df_q1)
 ```
 
+And then use specifications in log
 
+```{r}
+# (5) Origin only
+reg5_log <- lm(logsalhoraire ~ origine, df_q1)
 
+# (6) Mincer-like specification = (5) + Mincer covariates
+reg6_log <- lm(logsalhoraire ~ origine + age + I(age^2) + homme + education + region, df_q1)
 
+# (7) = (6) + individual and family backgrounds
+reg7_log <- lm(logsalhoraire ~ origine + age + I(age^2) + homme + education + region + expe_specifique + csp_pere_gp + csp_mere_gp + matri + sante_declaree + tuu_r + zus, df_q1)
 
+# (8) = (7) + job characteristics
+reg8_log <- lm(logsalhoraire ~ origine + age + I(age^2) + homme + education + region + expe_specifique + csp_pere_gp + csp_mere_gp + matri + sante_declaree + tuu_r + zus + csp_actif + contrat + typehoraire, df_q1)
+```
 
+We display the results in a single table
+
+```{r display, results='asis'}
+models <- list(
+  "(1)" = reg1_lvl,
+  "(2)" = reg2_lvl,
+  "(3)" = reg3_lvl,
+  "(4)" = reg4_lvl,
+  "(5)" = reg5_log,
+  "(6)" = reg6_log,
+  "(7)" = reg7_log,
+  "(8)" = reg8_log
+  )
+
+rows <- tribble(
+  ~term,              ~"(1)", ~"(2)", ~"(3)", ~"(4)", ~"(5)", ~"(6)", ~"(7)", ~"(8)",
+  "Education FE",     "",   "Yes",  "Yes",  "Yes",  "",   "Yes",  "Yes",  "Yes",
+  "Region FE",        "",   "Yes",  "Yes",  "Yes",  "",   "Yes",  "Yes",  "Yes",
+  "Matri FE",         "",   "",   "Yes",  "Yes",  "",   "",   "Yes",  "Yes",
+  "Santé déclarée FE","",   "",   "Yes",  "Yes",  "",   "",   "Yes",  "Yes",
+  "TUU_r FE",         "",   "",   "Yes",  "Yes",  "",   "",   "Yes",  "Yes",
+  "ZUS FE",           "",   "",   "Yes",  "Yes",  "",   "",   "Yes",  "Yes",
+  "CSP père FE",      "",   "",   "Yes",  "Yes",  "",   "",   "Yes",  "Yes",
+  "CSP mère FE",      "",   "",   "Yes",  "Yes",  "",   "",   "Yes",  "Yes",
+  "CSP actif FE",     "",   "",   "",   "Yes",  "",   "",   "",   "Yes",
+  "Contrat FE",       "",   "",   "",   "Yes",  "",   "",   "",   "Yes",
+  "Type horaire FE",  "",   "",   "",   "Yes",  "",   "",   "",   "Yes"
+)
+
+modelsummary(
+  models,
+  vcov = vcov_robust,
+  stars = TRUE,
+  output = "markdown",
+  coef_omit = "^\\(Intercept\\)|^education|^region|^matri|^sante_declaree|^tuu_r|^zus|^csp_pere_gp|^csp_mere_gp|^csp_actif|^contrat|^typehoraire",
+  title = NULL,
+  gof_omit = "IC|Log|F|RMSE",
+  add_rows = rows
+  )
+```
+
+In all specifications, we report robust standard errors clustered at
+the household level (`id_menage`).
+
+We obtain models where some of the coefficients are statistically
+significant at the 10%, 5% and 1% thresholds, and where the adjusted
+R-squared falls between 0.004 (specification (1)) and 0.410
+(specification (8)). We detail below our justification for each included
+variable.
+
+We also run a joint Wald test on origin dummies. Individual
+origin coefficients are often non-significant due to small subgroup
+sizes, but the joint test tells us whether origin as a whole is a
+statistically meaningful determinant of wages. The joint Wald test
+checks whether all origin dummies are simultaneously zero. This
+is more informative than looking at individual p-values, especially
+when subgroups are small as in this setting.
+
+```{r wald_test, results='asis'}
+wald_pvals <- tibble(
+  Specification = names(models),
+  `Wald p-value (origin)` = sapply(models, wald_test_origin)
+)
+knitr::kable(wald_pvals, digits = 3)
+```
+
+The Wald test of joint nullity of all origin dummies rejects in
+specifications (1) and (5) (p-val < 0.01). As controls are added, the
+p-value increases but typically remains below or near 0.05 (except for
+specifications (3) and (4)), indicating that origin as a whole remains
+a statistically meaningful determinant of wages even after controlling
+for the usual covariates.
+
+### Justification of control variables
+
+Our goal is to obtain an unbiased estimator of the effect of `origine`
+on wages. This requires $E[\varepsilon|\text{origine}] = 0$, meaning
+there must be no omitted variables correlated with both origin and wages.
+We therefore include controls that are plausibly correlated with both.
+
+One thing we want when estimating the effect of origin on individual's                                        
+wages by linear regression is to find an unbiased estimator of the                                            
+parameter associated to origin in such a regression. For that to be                                           
+verified, we need:
+1.  The linearity in the parameter (we will specify our models to do so);
+2.  the sample to be representative of the population (we have no hold
+over it but we may discuss it later);
+3.  the non-perfect colinearity of the independent variables we are going
+to choose in our model (we will have to check it for each added variable);
+4.  the nullity of the conditional expectation of the error term of the
+regression ($E[\varepsilon|origin]=0$),
+      
+Our two minimal theoretical models are
+$\log(salhoraire) = \beta_0 + \beta_1 origin + \varepsilon$ (column (1))
+and
+$salhoraire = \delta_0 + \delta_1 origin + \varepsilon$ (column (5))
+      
+Our four nested specifications progressively add:
+
+-   **(1)/(5) Base model**: `origine` only --- the raw origin gap.
+-   **(2)/(6) Mincer baseline**: `age`, `age^2`, `homme`, `education`,
+    `region` --- standard wage determinants. `age` proxies experience;
+    the quadratic captures the hump-shaped earnings profile.
+    `region` controls for geographic wage variation. We use `education`
+    (6 levels) rather than finer versions to keep cell sizes adequate.
+-   **(3)/(7) + background**: `expe_specifique` (firm tenure),
+    `csp_pere_gp` and `csp_mere_gp` (parental CSP, 1-digit),
+    `matri`, `sante_declaree`, `tuu_r`, `zus` --- individual and family
+    characteristics. `zus` captures spatial segregation (correlated with
+    both origin and wages). `sante_declaree` is a productivity proxy
+    (though potentially endogenous via reverse causality).
+-   **(4)/(8) + job characteristics**: `csp_actif`, `contrat`,
+    `typehoraire` --- these are "bad controls" (outcomes partly
+    determined by origin), so we include them only to study the channels
+    through which origin affects wages (Question 1c), not in our
+    preferred specification.
+    
+Below is the detailed rationale for the variables we chose to include or exclude from our models.
+
+#### 1. Included Variables
+
+**Demographic & Geographic Controls:**
+We control for `age` (using a quadratic form to capture the concave,
+hump-shaped earnings profile typical of a life-cycle career) and the
+gender indicator `homme` to account for experience and the gender wage
+gap. Geographic variables (`region`, `tuu_r`, and `zus`) are crucial to
+isolate origin from spatial segregation, varying local labor markets, and
+metropolitan cost-of-living differences. Legal marital status (`matri`)
+is added as it often signals stability and correlates with higher earnings.
+Lastly, self-reported health (`sante_declaree`) acts as a proxy for
+individual productivity, despite acknowledging potential endogeneity from
+reverse causality.
+
+**Family Background & Education:**
+The `education` variable is a crucial control to separate the direct
+effect of origin from educational attainment pathways. To control for
+social reproduction and intergenerational wealth or status transfers, we
+include parental occupations (`csp_pere` and `csp_mere`). We group these
+into 1-digit categories (`csp_pere_gp`, `csp_mere_gp`) to maintain robust
+statistical power and avoid volatile estimates from small cell sizes.
+
+**Job Characteristics (Mediation Channels):**
+We include `expe_specifique` to compare workers at equal levels of firm
+tenure. The `plract` indicator controls for multiple job-holding, which
+may signal financial necessity. Variables like `typehoraire` and
+`compenheuresup` account for compensating differentials like atypical
+hours or overtime pay. While variables like `csp_actif` and `contrat`
+are included in extended specifications, we acknowledge them as "bad
+controls" because occupational sorting and contract types are outcomes
+partly determined by origin itself. Including them absorbs the indirect
+effect of origin, which is why they are used exclusively to study mediation
+channels (Question 1c), not in our preferred baseline.
+
+#### 2. Excluded Variables
+
+**Labor Status & Mechanical Collinearity:**
+Variables related to unemployment or inactivity (`acteu`, `chomeur`,
+and `ancchom`) are excluded because these individuals naturally have
+no reported wages in our sample, rendering these variables statistically
+irrelevant for the sub-population of employed workers. Similarly,
+`heuretra`, `jourtra`, and `salmensuel` are omitted to avoid mechanical
+collinearity, as the dependent variable (`salhoraire`) is computed directly
+from them. Finally, `taille_menage` is excluded due to a high non-response
+bias across wage data and the absence of a clear theoretical link to hourly
+wages.
+
+**Collinearity & Redundancy:**
+Parental nationalities (`nat_mere`, `nat_pere`) are near-collinear
+with the `origine` variable (which is constructed directly from them),
+so they are dropped. Individual nationality (`nat`) is also omitted to
+strictly isolate the effect of origin rather than legal citizenship. We
+exclude `pacs` in favor of `matri` because `pacs` contains thousands of
+missing values. Furthermore, `descimmi` and `immi` are excluded since their
+information is already largely captured by the origin categories themselves.
+
+### Functional form
+
+```{r func_form, fig.width=10, fig.height=4}
+# Age vs log wage with quadratic fit
+p1 <- ggplot(df_q1, aes(age, logsalhoraire)) +
+  geom_point(alpha = 0.15, size = 0.8, colour = "#248BFF") +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2),
+              colour = "#e81757", linewidth = 0.8) +
+  labs(title = "Age vs log hourly wage",
+       x = "Age", y = "Log hourly wage") +
+  theme_projet()
+
+# Firm tenure vs log wage
+p2 <- ggplot(df_q1, aes(expe_specifique, logsalhoraire)) +
+  geom_point(alpha = 0.15, size = 0.8, colour = "#248BFF") +
+  geom_smooth(method = "loess",
+              colour = "#e81757", linewidth = 0.8) +
+  labs(title = "Firm tenure vs log hourly wage",
+       x = "Firm tenure (months)", y = "Log hourly wage") +
+  theme_projet()
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+The scatter plots confirm a concave age--wage profile, justifying the
+quadratic specification `age + age^2`. The relationship with firm tenure
+is approximately linear, so we include `expe_specifique` without a
+quadratic term.
+
+### Why we pick the log specification
+
+We prefer the log specification for two reasons: (i) coefficients are
+directly interpretable as approximate percentage effects, which is more
+natural than a fixed euro amount; (ii) AIC is not directly comparable
+across different left-hand-side variables, so we rely on economic
+reasoning and report the level specification as a robustness check.
+
+Among log specifications, our preferred model is **(7)**: it has the
+highest adjusted R-squared among specifications without bad controls,
+and all its covariates have clear theoretical justification.
+
+## 1b) Interpretation of the origin coefficients
+
+```{r origin_coefs}
+# Comment: We compute the mean French-origin wage as a reference point,
+# then extract the origin coefficients from specification (7) and convert
+# them to percentage effects and euro amounts.
+mean_fr <- mean(df_q1$salhoraire[df_q1$origine == "France"], na.rm = TRUE)
+cat("Mean hourly wage for French-origin individuals:", round(mean_fr, 2), "EUR\n")
+
+coef_tab <- broom::tidy(reg7_log, conf.int = TRUE) %>%
+  filter(grepl("^origine", term)) %>%
+  mutate(
+    pct_effect = (exp(estimate) - 1) * 100,
+    euro_at_mean = pct_effect / 100 * mean_fr
+  )
+coef_tab %>%
+  select(term, estimate, std.error, p.value, conf.low, conf.high,
+         pct_effect, euro_at_mean)
+```
+
+In the preferred log specification (7), each coefficient on `origine` is
+interpreted as a semi-elasticity: it gives the approximate percentage
+wage gap between the corresponding origin group and individuals of
+French origin, *holding age, sex, education, region, firm-specific
+experience, parental CSP, marital status, self-reported health, urban
+unit, and ZUS status fixed*. For coefficients small in absolute value
+($|\hat\beta| < 0.10$), the approximation $\hat\beta \approx$
+percentage effect holds; for larger coefficients, the exact formula
+$(\exp(\hat\beta) - 1) \times 100$ is more accurate.
+
+In all our specifications, the origin coefficients strongly depend on
+the modality. Compared to individuals of French origin:
+
+-   Some European-origin groups show a **positive** wage premium (e.g.
+    Southern Europe, Northern Europe), which remains significant at the
+    5% level in several specifications.
+-   Other groups (notably Rest of Africa) show a **negative** wage gap,
+    though its significance varies across specifications.
+-   Most other modalities (Eastern Europe, Maghreb, Southeast Asia, RoW,
+    Unknown) have point estimates between -5% and +2%, and are not
+    individually significant at conventional thresholds.
+
+However, non-significance for small subgroups (often fewer than 200
+observations) should not be interpreted as evidence of no gap: it may
+simply reflect low statistical power. Confidence intervals are more
+informative than p-values in this context --- a 95% CI of [-12%, +4%]
+for a group of 80 individuals tells us we cannot rule out a substantial
+gap in either direction.
+
+## 1c) Through which channels does origin affect wages?
+
+It is likely that the effect of origin on wages is partly mediated
+through other variables. To test this, we start from the Mincer baseline
+(specification (6): origin + age + age² + sex + education + region) and
+progressively add each candidate channel, tracking how the origin
+coefficients move. The key channels we investigate are: parental social
+background (`csp_pere_gp`), occupation (`csp_actif`), type of contract
+(`contrat`), and type of working hours (`typehoraire`).
+
+Note that adding `csp_actif`, `contrat`, and `typehoraire` is a form of
+"bad control" analysis: these variables are themselves partly determined
+by origin, so including them absorbs the *indirect* effect of origin
+running through occupational sorting and contract segmentation. The
+coefficient on origin after controlling for these channels captures only
+the *residual direct* effect.
+
+```{r mediation}
+# Comment: We start from the Mincer baseline (demographics + education)
+# so that education itself can also be studied as a channel.
+m_base <- lm(logsalhoraire ~ origine + age + I(age^2) + homme + region,
+             data = df_q1)
+
+chan_specs <- list(
+  "baseline (no educ)" = m_base,
+  "+ education"        = update(m_base, . ~ . + education),
+  "+ csp_pere_gp"      = update(m_base, . ~ . + education + csp_pere_gp),
+  "+ csp_actif"        = update(m_base, . ~ . + education + csp_actif),
+  "+ contrat"          = update(m_base, . ~ . + education + contrat),
+  "+ typehoraire"      = update(m_base, . ~ . + education + typehoraire),
+  "all channels"       = reg8_log
+)
+
+# Comment: Collect origin coefficients from each specification and plot
+coef_evo <- map_dfr(chan_specs, ~ broom::tidy(.x), .id = "spec") %>%
+  filter(grepl("^origine", term)) %>%
+  mutate(spec = factor(spec, levels = names(chan_specs)))
+
+ggplot(coef_evo,
+       aes(x = spec, y = estimate, colour = term, group = term)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_line() +
+  geom_point() +
+  coord_flip() +
+  labs(x = NULL,
+       y = "Coefficient on log(hourly wage)",
+       title = "Evolution of origin coefficients as channels are added") +
+  theme_projet()
+```
+
+```{r mediation_table, results='asis'}
+modelsummary(
+  chan_specs,
+  vcov = vcov_robust,
+  stars = TRUE, output = "markdown",
+  coef_omit = "^\\(Intercept\\)|^education|^region|^csp_pere_gp|^csp_actif|^contrat|^typehoraire|^matri|^sante_declaree|^tuu_r|^zus|^csp_mere_gp|^expe_specifique",
+  title = "Sequential mediation analysis (log hourly wage)",
+  gof_omit = "IC|Log|F|RMSE"
+)
+```
+
+The plot and table make explicit which channels absorb the origin gap:
+
+-   **Education**: adding education as a control reduces the negative
+    coefficients for some origin groups (notably Rest of Africa), which
+    is consistent with lower average educational attainment mediating
+    part of the wage gap for these groups.
+
+-   **Occupation (`csp_actif`)**: this is the single most powerful
+    channel. Adding it typically halves the origin gap, consistent with
+    origin groups being over-represented in lower-paying occupations.
+    This does not mean origin has no effect on wages; it means the
+    effect largely *operates through* occupational sorting.
+
+-   **Contract type (`contrat`)**: controlling for contract type moves
+    some coefficients further, pointing to a segmentation of labour
+    contracts by origin (e.g. more fixed-term contracts for some groups).
+
+-   **Parental CSP (`csp_pere_gp`)**: absorbs part of the gap for
+    second-generation groups, consistent with intergenerational
+    transmission of social status.
+
+Importantly, "controlling for a mediator shrinks the coefficient" does
+*not* mean the causal effect of origin is zero --- it means that part of
+the total effect runs through that mediator.
+
+## Question 2
+
+### 2a) Why education is a problematic control
+
+We can argue that education is partly explained by individual and family
+choices that themselves depend on origin (e.g.cultural context, access
+to information on education, resources, etc.). In other words, origin
+impacts wages largely indirectly through its impact on education. By
+adding education to the model, the estimated coefficient for origin only
+captures the direct effect on wages, ignoring the indirect effect
+through educational pathways that may be created by unobservable
+factors. Consequently, we can expect the coefficient for origin to
+become smaller in absolute value than the total effect, as it no longer
+accounts for the potential disadvantages accumulated during the
+individual's educational trajectory.
+
+(An other phenomenon, althought that's not really our interest in this
+question, is that the coefficient for education may be biased due to
+omitted unobservable factors (such as innate talent or motivation) that
+simultaneously influence both educational level and wages.)
+
+### 2b) Choice of instruments
+
+To address the main problem mentioned in (2a), we can use an
+Instrumental Variable.
+
+For a variable Z to be a valid instrument, it must satisfy two
+conditions:
+1)  Relevance: $Cov(\text{educ}, Z) \neq 0$. The instrument must be
+    strongly correlated with education.
+2)  Exogeneity: $Cov(\text{salhoraire}, Z) = 0$. Z should not be
+    correlated with the error term; it should only impact wages
+    indirectly through education. By intuition, csp_mere or csp_pere seem
+    to be good choices: Relevance: Parental socio-professional category
+    influences a lot the willingness and capacity to pursue long
+    studies, often through social reproduction or different visions of
+    job possibilities. Exogeneity: Parental CSP impacts wages primarily
+    indirectly. Even if it shapes educational choices and cultural
+    capital, an individual's current hourly wage is mostly determined by
+    their own qualifications and career path, making any remaining
+    direct influence from parents' status possibly negligible.
+
+However, `nat_mere` and `nat_pere` are **not valid instruments**
+here: `origine` is constructed from parental nationalities (see the data
+appendix), so they are nearly collinear with the exogenous regressor
+`origine` that we want to keep in the second stage. Using them as
+instruments would violate the exclusion restriction.
+
+To identify the causal effect of one exogeneous variable, we need one
+valid instrument (one instrument for each exogeneous variable of our
+model). Since we treat education as a categorical variable, each level
+(represented by a dummy variable) is potentially endogenous. Therefore,
+we need at least as many instruments as there are education levels
+(minus the reference category). Using csp_mere as a categorical
+instrument, for instance, provides enough instruments to identify the
+effect of each education level (which is also the case for
+nat_mere/pere)
+
+However, the csp_mere and csp_pere variables have too many categories
+(more than 30!). For the instruments to be robust, each category must
+contain a significant number of individuals. To achieve this, we
+group them by "Groupe Socioprofessionnel" (the 1st digit level)
+according to the INSEE nomenclature. This grouping ensures we have
+enough instruments to satisfy the order condition while maintaining
+statistical power.
+
+```{r}
+df_q1 <- df_q1 %>%
+  mutate(
+    # Extract the first digit of parental CSP
+    csp_pere_gp = substr(as.character(csp_pere), 1, 1),
+    csp_mere_gp = substr(as.character(csp_mere), 1, 1)
+  ) %>%
+  mutate(
+    # Convert to factors for the regression
+    csp_pere_gp = as.factor(csp_pere_gp),
+    csp_mere_gp = as.factor(csp_mere_gp)
+  )
+
+summary(df_q1$csp_mere_gp)
+```
+
+We have 8 instruments \> 5 exogenous variables (6 levels of education so
+5 indicators/dummies in the model).
+
+### 2c) 2SLS estimation
+
+We estimate the 2SLS using the same controls as our preferred OLS
+specification (7), so that the comparison between OLS and IV is
+meaningful.
+
+```{r iv_estimation}
+# Instrument set 1: csp_pere_gp only
+model_iv_1 <- ivreg(
+  logsalhoraire ~ education + origine + age + I(age^2) + homme + region +
+    expe_specifique + csp_mere_gp + matri + sante_declaree + tuu_r + zus |
+    csp_pere_gp + origine + age + I(age^2) + homme + region +
+    expe_specifique + csp_mere_gp + matri + sante_declaree + tuu_r + zus,
+  data = df_q1)
+
+# Instrument set 2: csp_pere_gp + csp_mere_gp
+# Comment: csp_mere_gp moves from exogenous control to instrument here
+model_iv_2 <- ivreg(
+  logsalhoraire ~ education + origine + age + I(age^2) + homme + region +
+    expe_specifique + matri + sante_declaree + tuu_r + zus |
+    csp_pere_gp + csp_mere_gp + origine + age + I(age^2) + homme + region +
+    expe_specifique + matri + sante_declaree + tuu_r + zus,
+  data = df_q1)
+
+summary(model_iv_1, diagnostics = TRUE)
+summary(model_iv_2, diagnostics = TRUE)
+```
+
+```{r iv_comparison, results='asis'}
+# Comment: Side-by-side display of OLS vs 2SLS for easy comparison
+modelsummary(
+  list("OLS (7)" = reg7_log,
+       "2SLS (csp_pere)" = model_iv_1,
+       "2SLS (csp_pere + csp_mere)" = model_iv_2),
+  vcov = list(vcov_robust, vcov_robust, vcov_robust),
+  stars = TRUE, output = "markdown",
+  coef_omit = "^\\(Intercept\\)|^region|^matri|^sante_declaree|^tuu_r|^zus|^csp_pere_gp|^csp_mere_gp",
+  title = "OLS vs 2SLS --- origin and education",
+  gof_omit = "IC|Log|F|RMSE"
+)
+```
+
+### 2d) Interpretation
+
+Three points deserve comment:
+
+1.  **Diagnostics.** The first-stage F-statistic on the excluded
+    instruments should exceed the Stock--Yogo critical value (rule of
+    thumb: F > 10) for the instruments to be considered strong. If the
+    Sargan over-identification test rejects, at least one instrument is
+    correlated with the wage residual --- most likely `csp_mere_gp`
+    operating through professional networks --- and we should prefer the
+    just-identified specification using only `csp_pere_gp`.
+
+2.  **Education coefficient.** We expect the IV coefficient on education
+    dummies to be *larger* in absolute value than OLS if the ability
+    bias was attenuating the OLS estimate (Card-type argument), but also
+    noisier due to the loss of efficiency from 2SLS.
+
+3.  **Origin coefficient.** If the IV origin coefficients remain
+    essentially unchanged compared to OLS after instrumenting education,
+    it means the indirect-through-education channel is small for the
+    compliers, and the bulk of the origin gap passes through other
+    channels (occupation, contract type, parental networks) --- consistent
+    with the mediation analysis of Question 1c. The wider standard errors
+    are mechanical (2SLS is less efficient than OLS), so non-significance
+    of individual origin modalities should not be over-interpreted; 95%
+    confidence intervals are more informative than p-values here.
