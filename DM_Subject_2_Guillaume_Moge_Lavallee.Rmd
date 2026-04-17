@@ -723,6 +723,49 @@ We can make three comments here:
 
 # Question 3: Panel data
 
+## 3a) 
+The wording tells us that we first assume to have the exogeneity of residuals and individual fixed effect. The exogeneity of individual fixed effect means that we can separate the effect of variables that are time invariant like origin from the individual residual alpha_i.
+As we need to use the panel structure at trimester 1 and 6 we can use the model 7 of Q1 to which we add an indicator of being in period t=1 or t=6 (for R to identify the panel structure we need to use plm instead of lm).
+
+```{r}
+#to do so we first need to clean the needed datas and specify it is a panel data with periods t through pdata.frame
+df_q3 <- df %>%   filter(t %in% c(1, 6), acteu == "1", !is.na(salhoraire)) %>%   filter(complete.cases(select(., salhoraire, logsalhoraire, origine, age, homme, education, region, tuu_r, zus, matri, sante_declaree, csp_pere_gp, csp_mere_gp,     expe_specifique, id_menage))) %>%   arrange(id_individu, t)  
+pdata_q3 <- pdata.frame(df_q3, index = c("id_individu", "t"))  
+
+# And here is the regression with indicators for periods
+re_q3 <- plm( logsalhoraire ~ origine + age + I(age^2) + homme + education + region + expe_specifique + csp_pere_gp + csp_mere_gp + matri + sante_declaree + tuu_r + zus + factor(t),   data  = pdata_q3,   model = "random",   effect = "individual" ) 
+coeftest(re_q3, vcovHC(re_q3, cluster = "group", type = "HC1"))
+```
+The factor(t)6 coefficient (+0.014, significant at 1%) indicates average hourly wages grew by roughly +1.4% between the first and last observed quarters (2014–2016).
+
+Individual wage profile: The age quadratic confirms the expected concave life-cycle for wages, peaking at around 52 years old (Beta_age_hat + 2 x Beta_square_age_hat x age = 0 implies age=52~).
+Men earn about +17.4% more than women (exp(0.160) − 1), all else equal.
+Education: The gradient is strong and monotonic: compared to the reference category (higher education beyond bac+2), wages fall by 15% at bac+2 level, 23% at baccalauréat, and up to −39% ((exp(−0.496)−1)×100 formula) for individuals with no qualification — all highly significant.
+
+Origin: Only two groups show statistically significant wage gaps relative to French-origin workers, controlling for all observables:
+
+Southern Europe: +4.9% wage premium (significant at 5%), consistent with positive selection of this group into well-paying sectors.
+Rest of Africa: −10.0% wage penalty (significant at 5%), the only significant negative gap, suggesting persistent wage inequality for this group even after controlling for education, region, occupation and family background.
+
+All other origin groups yield insignificant coefficients, likely reflecting low statistical power due to small subgroup sizes rather than the absence of any gap. A joint Wald test on all origin dummies remains necessary to assess the overall significance of the variable.
+```{r}
+
+names_origin <- grep("origine", names(coef(re_q3)), value = TRUE)
+
+
+wald_test <- linearHypothesis(re_q3, names_origin, 
+                              vcov = vcovHC(re_q3, method = "arellano", cluster = "group"))
+
+print(wald_test)
+```
+The Test rejects the joint nullity of the coefficient at the 5% level, thus in this model the origin have significant impact on individual's wages.
+Comparison with Q1. Results are qualitatively consistent with the cross-sectional specification (7). The "random effect" panel adds gains from exploiting both within and between-individual variation and partially accounts for time-invariant unobserved heterogeneity  — subject to the exogeneity assumption $E[\alpha_i|X]=0$ discussed in 3b).
+
+##3b)
+
+
+
+
 # Question 4: Linear probability model on unemployment
 
 ## Sample and dependent variable
