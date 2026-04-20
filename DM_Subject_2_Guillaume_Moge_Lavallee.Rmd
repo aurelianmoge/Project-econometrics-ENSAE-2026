@@ -434,7 +434,7 @@ quadratic term.
 
 ### Why we pick the log specification
 
-We prefer the log specification necause coefficients are directly
+We prefer the log specification because coefficients are directly
 interpretable as approximate percentage effects, which is more natural
 than a fixed euro amount. Moreover, since AIC is not directly comparable
 across different dependent variables, we report the level specification
@@ -761,7 +761,33 @@ print(wald_test)
 The Test rejects the joint nullity of the coefficient at the 5% level, thus in this model the origin have significant impact on individual's wages.
 Comparison with Q1. Results are qualitatively consistent with the cross-sectional specification (7). The "random effect" panel adds gains from exploiting both within and between-individual variation and partially accounts for time-invariant unobserved heterogeneity  — subject to the exogeneity assumption $E[\alpha_i|X]=0$ discussed in 3b).
 
-##3b)
+
+## 3b)
+
+The model estimated in question 3a) can be written as:
+
+$\log(w_{it}) = X_{it}\beta + Z_i\gamma + \alpha_i + \varepsilon_{it}$,
+
+where : 
+$X_{it}$ are time-varying regressors,
+$Z_i$ are time-invariant regressors,
+$\alpha_i$ is the individual effect,
+\varepsilon_{it} is the idiosyncratic error term.
+
+This model sits in case 1 of the chapter: $E[\alpha_i X_{it}] = 0$, meaning the individual effect is assumed uncorrelated with all regressors. The estimation method is pooled OLS with clustered standard errors, where clustering accounts for within-individual serial correlation.
+
+The "origin" variable is time-invariant and therefore enters $Z_i$, alongside gender and education for instance. Since we are in the case $E[\alpha_i X_{it}] = 0$, there is no need to eliminate $\alpha_i$, and time-invariant regressors are not excluded. The "origin" variable can therefore be included in the model.
+
+However, endogeneity is not solved by this model but assumed away by it. If the assumption $E[\alpha_i X_{it}] = 0$ is in fact violated — which is plausible here, since origin likely correlates with unobserved individual characteristics captured in \alpha_i, such as family networks, pre-market discrimination, or cultural capital — then the pooled OLS estimator is biased and inconsistent. This is precisely what motivates question 3c).
+
+
+## 3c)
+
+Allowing individual effects to be correlated with regressors places us in case 2 of the chapter: $0E[X_{it}\alpha_i] \neq 0$. As stated in the course, it is then necessary to exclude time-invariant regressors, since their effects cannot be disentangled from \alpha_i.
+
+The two methods covered in class are the **Within estimator** and the **First-Difference estimator**. Both are designed to eliminate \alpha_i : the Within estimator by subtracting individual time means $\tilde{Y}_{it} = Y_{it} - \bar{Y}_i$, and the First-Difference estimator by subtracting consecutive periods $\Delta Y_{it} = Y_{it} - Y_{it-1}$. In both cases, any time-invariant variable is eliminated along with \alpha_i : $\tilde{Z}_i = Z_i - Z_i = 0$ and $\Delta Z_i = Z_i - Z_i = 0$. The "origin" variable therefore vanishes from the model under both estimators, and its coefficient is not identified.
+
+This reveals a fundamental trade-off in the panel data methods covered in this course: it is not possible to simultaneously solve the endogeneity problem arising from \alpha_i and identify the effect of time-invariant variables such as origin.
 
 
 
